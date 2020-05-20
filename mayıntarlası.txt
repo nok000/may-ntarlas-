@@ -1,0 +1,223 @@
+package mines;
+
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+
+import javax.swing.JPanel;
+
+
+public class MineField extends JPanel {
+	
+	private final static int ROWS = 20;  
+	private final static int COLS = 20;  
+	private final static Color LIGHT_GREEN = new Color(180,255,180);  
+	
+	private final static int STATE_UNVISITED = 0;  
+	private final static int STATE_FLAGGED = 1;    
+	private final static int STATE_REVEALED = 2;    
+	
+	private int[][] state;  
+	
+	private boolean[][] mined; 
+	private int mineCount;     
+	private boolean gameInProgress;  
+	private boolean userWon;  
+	public MineField() {
+		this(50);
+	}
+	
+	
+	public MineField(int mineCount) {
+		setPreferredSize( new Dimension(2 + 24*COLS, 2 + 24*ROWS ));
+		startGame(mineCount);
+		addMouseListener( new MouseAdapter() {
+			public void mousePressed(MouseEvent evt) {
+				doMouseClick(evt);
+			}
+		});
+	}
+	
+	
+	public int getMineCount() {
+		return mineCount;
+	}
+	
+	
+	private void doMouseClick(MouseEvent evt) {
+		int row = (evt.getY() - 1) / 24; 
+		int col = (evt.getX() - 1) / 24;  
+		if ( row < 0 || row >= ROWS || col < 0 || col >= COLS)
+			return;  
+		if (state[row][col] == STATE_REVEALED)
+			return; 
+		if (evt.isMetaDown() || evt.isShiftDown()) {
+			  
+			if (state[row][col] == STATE_UNVISITED) {
+				if (! hasRevealededNeighbor(row,col))
+					return;
+				state[row][col] = STATE_FLAGGED;
+			}
+			else 
+				state[row][col] = STATE_UNVISITED;
+		}
+		else {
+			  
+			if (! hasRevealedOrMarkedNeighbor(row,col))
+				return; 
+			if (state[row][col] == STATE_FLAGGED)
+				return; 
+			visit(row, col);  
+		}
+		repaint();  
+	}
+	
+	
+	protected void paintComponent(Graphics g) {
+		g.setColor(Color.GRAY);
+		g.fillRect(0, 0, getWidth(), getHeight());
+		for (int r = 0; r < ROWS; r++)
+			for (int c = 0; c < COLS; c++) {
+				if (mined[r][c] && !gameInProgress)
+					g.setColor(Color.RED);
+				else if (state[r][c] == STATE_FLAGGED)
+					g.setColor(Color.PINK);
+				else
+					g.setColor(LIGHT_GREEN);
+				if (state[r][c] == STATE_REVEALED)
+					g.fill3DRect( 2+24*c, 2+24*r, 23, 23, false );
+				else
+					g.fill3DRect( 2+24*c, 2+24*r, 23, 23, true );
+				g.setColor(Color.BLACK);
+				if (state[r][c] == STATE_FLAGGED)
+					g.drawString("B", 6+24*c, 15+24*r);
+				else if (state[r][c] == STATE_REVEALED) {
+					int bombs = bombCount(r,c);
+					if (bombs > 0)
+						g.drawString("" + bombs, 6+24*c, 15+24*r);
+				}
+			}
+		if (!gameInProgress) {
+			g.setColor(Color.BLUE);
+			g.setFont(new Font("SERIF", Font.BOLD, 36));
+			g.drawString("Game Over.", 30, 60);
+			if (userWon)
+				g.drawString("YOU WIN!", 30, 120);
+			else
+				g.drawString("YOU LOSE!", 30, 120);
+		}
+	}
+
+	
+	public void startGame(int mineCount) {
+		System.out.println("Start a game with " + mineCount + " mines.");
+		this.mineCount = mineCount;
+		while (true) { 
+			gameInProgress = true;
+			mined = new boolean[ROWS][COLS]; 
+			state = new int[ROWS][COLS];     
+			for (int i = 0; i < mineCount; i++) { 
+				int r,c;
+				while (true) {
+					r = (int)(ROWS * Math.random());  
+					c = (int)(COLS * Math.random());  
+					if ( (r + c > 2) &&  (r < ROWS-1 || c < COLS-1) && ! mined[r][c] ) {
+						   
+						break;
+					}
+				}
+				mined[r][c] = true;
+			}
+			visit(0,0); 
+			if (configOK()) 
+				break;
+		}
+		repaint();
+	}
+	
+	
+	private boolean hasRevealededNeighbor(int row, int col) {
+		if (row > 0 && state[row-1][col] == STATE_REVEALED)
+			return true;
+		if (row < ROWS-1 && state[row+1][col] == STATE_REVEALED)
+			return true;
+		if (col > 0 && state[row][col-1] == STATE_REVEALED)
+			return true;
+		if (col < COLS-1 && state[row][col+1] == STATE_REVEALED)
+			return true;
+		return false;
+	}
+	
+	
+	private boolean hasRevealedOrMarkedNeighbor(int row, int col) {
+		if (row > 0 && state[row-1][col] > STATE_UNVISITED)
+			return true;
+		if (row < ROWS-1 && state[row+1][col] > STATE_UNVISITED)
+			return true;
+		if (col > 0 && state[row][col-1] > STATE_UNVISITED)
+			return true;
+		if (col < COLS-1 && state[row][col+1]> STATE_UNVISITED)
+			return true;
+		return false;
+	}
+	
+	
+	private void visit( int row, int col ) {
+		if (mined[row][col]) {  
+			gameInProgress = false;
+			userWon = false;
+		}
+		else { 
+			reveal(row,col);
+			if (state[ROWS - 1][COLS -1] == STATE_REVEALED) { 
+				gameInProgress = false;
+				userWon = true;
+			}
+		}
+	}
+	
+	private int bombCount(int row, int col) {
+		int ct = 0;
+		if (row > 0) {
+			if (col > 0 && mined[row-1][col-1])
+				ct++;
+			if (mined[row-1][col])
+				ct++;
+			if (col < COLS-1 && mined[row-1][col+1])
+				ct++;
+		}
+		if (col > 0 && mined[row][col-1])
+			ct++;
+		if (col < COLS-1 && mined[row][col+1])
+			ct++;
+		if (row < ROWS-1) {
+			if (col > 0 && mined[row+1][col-1])
+				ct++;
+			if (mined[row+1][col])
+				ct++;
+			if (col < COLS-1 && mined[row+1][col+1])
+				ct++;
+		}
+		return ct;
+	}
+	
+	private boolean configOK() {
+		if ( state[ROWS-1][COLS-1] == STATE_REVEALED ) {
+			System.out.println("Already solved.");
+			return false;
+		}
+		return true;
+	}
+	
+
+	
+	private void reveal(int row, int col) {
+		if (row < 0 || row >= ROWS || col < 0 || col >= COLS)
+			return;
+		state[row][col] = STATE_REVEALED;
+	}
+	
+}
